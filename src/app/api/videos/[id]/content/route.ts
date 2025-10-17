@@ -62,14 +62,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             effectiveStorageMode = 'fs';
         }
 
-        // Password authentication
+        // Password authentication - check both header and query param
         const authHeader = request.headers.get('x-password-hash');
+        const authQuery = searchParams.get('password-hash');
+        const clientPasswordHash = authHeader || authQuery;
+
         if (process.env.APP_PASSWORD) {
-            if (!authHeader) {
+            if (!clientPasswordHash) {
                 return NextResponse.json({ error: 'Unauthorized: Missing password hash.' }, { status: 401 });
             }
             const serverPasswordHash = sha256(process.env.APP_PASSWORD);
-            if (authHeader !== serverPasswordHash) {
+            if (clientPasswordHash !== serverPasswordHash) {
                 return NextResponse.json({ error: 'Unauthorized: Invalid password.' }, { status: 401 });
             }
         }

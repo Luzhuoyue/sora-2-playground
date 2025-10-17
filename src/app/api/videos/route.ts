@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
                 console.error('Missing password hash.');
                 return NextResponse.json({ error: 'Unauthorized: Missing password hash.' }, { status: 401 });
             }
-            const serverPasswordHash = sha256(process.env.OPENAI_API_KEY);
+            const serverPasswordHash = sha256(process.env.APP_PASSWORD);
             if (clientPasswordHash !== serverPasswordHash) {
                 console.error('Invalid password hash.');
                 return NextResponse.json({ error: 'Unauthorized: Invalid password.' }, { status: 401 });

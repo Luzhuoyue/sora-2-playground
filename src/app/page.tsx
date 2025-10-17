@@ -118,16 +118,51 @@ export default function HomePage() {
         }
     }, [history, isInitialLoad]);
 
-    // Check password requirement
+    // Check password requirement and validate stored hash
     React.useEffect(() => {
         const fetchAuthStatus = async () => {
             try {
-                const response = await fetch('/api/auth-status');
+                // Check if we have a stored password hash
+                const storedHash = localStorage.getItem('clientPasswordHash');
+
+                // Call auth-status with stored hash (if exists) for validation
+                const response = await fetch('/api/auth-status', {
+                    headers: storedHash ? { 'x-password-hash': storedHash } : {}
+                });
+
                 if (!response.ok) {
                     throw new Error('Failed to fetch auth status');
                 }
+
                 const data = await response.json();
-                setIsPasswordRequiredByBackend(data.passwordRequired);
+                const passwordRequired = data.passwordRequired;
+                const isValid = data.valid;
+
+                setIsPasswordRequiredByBackend(passwordRequired);
+
+                // Handle different scenarios
+                if (!passwordRequired) {
+                    // No password required, clear any stored hash
+                    if (storedHash) {
+                        localStorage.removeItem('clientPasswordHash');
+                        setClientPasswordHash(null);
+                    }
+                } else if (storedHash && isValid === false) {
+                    // Stored hash is invalid (password changed on server)
+                    console.log('Stored password hash is invalid, clearing and prompting for new password');
+                    localStorage.removeItem('clientPasswordHash');
+                    setClientPasswordHash(null);
+                    setPasswordDialogContext('retry');
+                    setIsPasswordDialogOpen(true);
+                } else if (storedHash && isValid === true) {
+                    // Stored hash is valid
+                    setClientPasswordHash(storedHash);
+                } else if (!storedHash && passwordRequired) {
+                    // Password is required but not set - show dialog immediately
+                    console.log('Password required but not set, showing dialog');
+                    setPasswordDialogContext('initial');
+                    setIsPasswordDialogOpen(true);
+                }
             } catch (error) {
                 console.error('Error fetching auth status:', error);
                 setIsPasswordRequiredByBackend(false);
@@ -135,11 +170,16 @@ export default function HomePage() {
         };
 
         fetchAuthStatus();
-        const storedHash = localStorage.getItem('clientPasswordHash');
-        if (storedHash) {
-            setClientPasswordHash(storedHash);
-        }
     }, []);
+
+    // Refresh content when password becomes available
+    React.useEffect(() => {
+        if (clientPasswordHash && isPasswordRequiredByBackend) {
+            console.log('Password authenticated - content fetching is now enabled');
+            // The guards in getVideoSrc and getThumbnailSrc will now allow API calls
+            // Components will automatically re-render and fetch content since the callbacks depend on clientPasswordHash
+        }
+    }, [clientPasswordHash, isPasswordRequiredByBackend]);
 
     // Cleanup polling interval on unmount
     React.useEffect(() => {
@@ -202,10 +242,24 @@ export default function HomePage() {
                 return url;
             }
 
-            // Fallback to filesystem API
-            return `/api/videos/${id}/content`;
+            // Don't attempt API call if we haven't determined password requirement yet
+            if (isPasswordRequiredByBackend === null) {
+                return undefined;
+            }
+
+            // Don't attempt API call if password is required but not provided
+            if (isPasswordRequiredByBackend && !clientPasswordHash) {
+                return undefined;
+            }
+
+            // Fallback to filesystem API with password hash as query param
+            const url = `/api/videos/${id}/content`;
+            if (clientPasswordHash) {
+                return `${url}?password-hash=${encodeURIComponent(clientPasswordHash)}`;
+            }
+            return url;
         },
-        [allDbVideos, videoSrcCache, history]
+        [allDbVideos, videoSrcCache, history, isPasswordRequiredByBackend, clientPasswordHash]
     );
 
     const getThumbnailSrc = React.useCallback(
@@ -220,9 +274,25 @@ export default function HomePage() {
             if (record?.thumbnail) {
                 return URL.createObjectURL(record.thumbnail);
             }
-            return `/api/videos/${id}/content?variant=thumbnail`;
+
+            // Don't attempt API call if we haven't determined password requirement yet
+            if (isPasswordRequiredByBackend === null) {
+                return undefined;
+            }
+
+            // Don't attempt API call if password is required but not provided
+            if (isPasswordRequiredByBackend && !clientPasswordHash) {
+                return undefined;
+            }
+
+            // Build URL with password hash as query param if needed
+            const url = `/api/videos/${id}/content?variant=thumbnail`;
+            if (clientPasswordHash) {
+                return `${url}&password-hash=${encodeURIComponent(clientPasswordHash)}`;
+            }
+            return url;
         },
-        [allDbVideos, history]
+        [allDbVideos, history, isPasswordRequiredByBackend, clientPasswordHash]
     );
 
     // Single polling interval for all active jobs
@@ -968,11 +1038,12 @@ export default function HomePage() {
                 isOpen={isPasswordDialogOpen}
                 onOpenChange={setIsPasswordDialogOpen}
                 onSave={handleSavePassword}
-                title={passwordDialogContext === 'retry' ? 'Password Required' : 'Configure Password'}
+                isRequired={isPasswordRequiredByBackend === true && !clientPasswordHash}
+                title={passwordDialogContext === 'retry' ? 'Invalid Password' : 'Password Required'}
                 description={
                     passwordDialogContext === 'retry'
-                        ? 'The server requires a password, or the previous one was incorrect. Please enter it to continue.'
-                        : 'Set a password to use for API requests.'
+                        ? 'The password was incorrect. Please try again.'
+                        : 'This application is password-protected. Please enter the password to continue.'
                 }
             />
 

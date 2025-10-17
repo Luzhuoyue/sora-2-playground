@@ -18,6 +18,7 @@ interface PasswordDialogProps {
     onSave: (password: string) => void;
     title?: string;
     description?: string;
+    isRequired?: boolean;
 }
 
 export function PasswordDialog({
@@ -25,7 +26,8 @@ export function PasswordDialog({
     onOpenChange,
     onSave,
     title = 'Configure Password',
-    description
+    description,
+    isRequired = false
 }: PasswordDialogProps) {
     const [currentPassword, setCurrentPassword] = React.useState('');
     const inputRef = React.useRef<HTMLInputElement>(null);
@@ -38,6 +40,10 @@ export function PasswordDialog({
     };
 
     const handleDialogClose = (open: boolean) => {
+        // If password is required, prevent closing the dialog
+        if (isRequired && !open) {
+            return;
+        }
         if (!open) {
             setCurrentPassword('');
         }
@@ -46,7 +52,7 @@ export function PasswordDialog({
 
     return (
         <Dialog open={isOpen} onOpenChange={handleDialogClose}>
-            <DialogContent className='border-white/20 bg-black text-white sm:max-w-[425px]'>
+            <DialogContent className='border-white/20 bg-black text-white sm:max-w-[425px]' hideCloseButton={isRequired}>
                 <DialogHeader>
                     <DialogTitle className='text-white'>{title}</DialogTitle>
                     {description && <DialogDescription className='text-white/60'>{description}</DialogDescription>}
