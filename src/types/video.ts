@@ -1,3 +1,4 @@
+import type { VideoModel, VideoSeconds, VideoSize } from 'openai/resources/videos';
 import { CostDetails } from '@/lib/cost-utils';
 
 export type VideoJob = {
@@ -5,10 +6,10 @@ export type VideoJob = {
     object: 'video';
     created_at: number;
     status: 'queued' | 'in_progress' | 'completed' | 'failed';
-    model: 'sora-2' | 'sora-2-pro';
+    model: VideoModel;
     progress: number; // 0-100
-    seconds: string;
-    size: string;
+    seconds: VideoSeconds;
+    size: VideoSize;
     prompt?: string;
     error?: {
         message: string;
@@ -23,8 +24,8 @@ export type VideoMetadata = {
     filename: string;
     storageModeUsed?: 'fs' | 'indexeddb';
     durationMs: number;
-    model: 'sora-2' | 'sora-2-pro';
-    size: string;
+    model: VideoModel;
+    size: VideoSize;
     seconds: number;
     prompt: string;
     mode: 'create' | 'remix';
@@ -36,9 +37,9 @@ export type VideoMetadata = {
 };
 
 export type VideoJobCreate = {
-    model: 'sora-2' | 'sora-2-pro';
+    model: VideoModel;
     prompt: string;
-    size: string;
-    seconds: number;
+    size: VideoSize;
+    seconds: VideoSeconds;
     input_reference?: File;
 };
