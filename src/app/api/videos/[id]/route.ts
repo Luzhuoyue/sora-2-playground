@@ -103,8 +103,23 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         console.log(`Video ${id} deleted successfully from OpenAI`);
 
         // Delete local files from filesystem if they exist
-        const effectiveStorageMode = process.env.NEXT_PUBLIC_FILE_STORAGE_MODE ||
-            (process.env.VERCEL === '1' ? 'indexeddb' : 'fs');
+        const explicitMode = process.env.NEXT_PUBLIC_FILE_STORAGE_MODE;
+        const isOnVercel = process.env.VERCEL === '1';
+        let effectiveStorageMode: 'fs' | 'indexeddb';
+
+        // Prevent fs mode on Vercel (filesystem is read-only/ephemeral)
+        if (isOnVercel && explicitMode === 'fs') {
+            console.warn('fs mode is not supported on Vercel, forcing indexeddb mode');
+            effectiveStorageMode = 'indexeddb';
+        } else if (explicitMode === 'fs') {
+            effectiveStorageMode = 'fs';
+        } else if (explicitMode === 'indexeddb') {
+            effectiveStorageMode = 'indexeddb';
+        } else if (isOnVercel) {
+            effectiveStorageMode = 'indexeddb';
+        } else {
+            effectiveStorageMode = 'fs';
+        }
 
         if (effectiveStorageMode === 'fs') {
             const filesToDelete = [

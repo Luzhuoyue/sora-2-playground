@@ -52,7 +52,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         const explicitMode = process.env.NEXT_PUBLIC_FILE_STORAGE_MODE;
         const isOnVercel = process.env.VERCEL === '1';
 
-        if (explicitMode === 'fs') {
+        // Prevent fs mode on Vercel (filesystem is read-only/ephemeral)
+        if (isOnVercel && explicitMode === 'fs') {
+            console.warn('fs mode is not supported on Vercel, forcing indexeddb mode');
+            effectiveStorageMode = 'indexeddb';
+        } else if (explicitMode === 'fs') {
             effectiveStorageMode = 'fs';
         } else if (explicitMode === 'indexeddb') {
             effectiveStorageMode = 'indexeddb';

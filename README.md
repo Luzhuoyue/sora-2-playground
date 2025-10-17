@@ -42,15 +42,51 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
 
 ## ▲ Deploy to Vercel
 
-🚨 *CAUTION: If you deploy from `main` or `master` branch, your Vercel deployment will be **publicly available** to anyone who has the URL. Deploying from other branches will require users to be logged into Vercel (on your team) to access the preview build.* 🚨
+Deploy your own instance of this playground to Vercel with one click:
 
-You can deploy your own instance of this playground to Vercel with one click:
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/alasano/sora-2-playground&env=OPENAI_API_KEY,APP_PASSWORD&envDescription=OPENAI_API_KEY%20required.%20APP_PASSWORD%20required%20during%20setup%20(protects%20public%20deployment%2C%20removable%20in%20settings%20afterward).&project-name=sora-2-playground&repository-name=sora-2-playground)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/alasano/sora-2-playground&env=OPENAI_API_KEY,NEXT_PUBLIC_FILE_STORAGE_MODE,APP_PASSWORD&envDescription=OpenAI%20API%20Key%20is%20required.%20Set%20storage%20mode%20to%20indexeddb%20for%20Vercel%20deployments.&project-name=sora-2-playground&repository-name=sora-2-playground)
+### What Happens When You Deploy:
 
-You will be prompted to enter your `OPENAI_API_KEY` and `APP_PASSWORD` during the deployment setup. For Vercel deployments, it's required to set `NEXT_PUBLIC_FILE_STORAGE_MODE` to `indexeddb`.
+1. **Vercel clones this repository** to your GitHub account (creates a private repo by default)
+2. **Deploys from the `master` branch** to a production URL
+3. **You'll be prompted to enter** environment variables during setup
+4. **Your deployment goes live** immediately after setup completes
 
-Note: If `NEXT_PUBLIC_FILE_STORAGE_MODE` is not set, the application will automatically detect if it's running on Vercel and default to `indexeddb` mode. Otherwise (e.g., running locally), it defaults to `fs` mode. You can always explicitly set the variable to `fs` or `indexeddb` to override this automatic behavior.
+### 🔒 Important Security Note:
+
+**Your deployment URL will be publicly accessible** by anyone who has the link. This is how Vercel works - production deployments from your master branch are public by default.
+
+Without protection, anyone who discovers your URL can use your OpenAI API key to generate videos at your expense. This is why `APP_PASSWORD` is required during the initial setup to add authentication to your deployment.
+
+You can remove `APP_PASSWORD` later through Vercel Project Settings if desired, but this will leave your deployment unprotected.
+
+### Environment Variables:
+
+During deployment, you'll be prompted to provide:
+
+- **`OPENAI_API_KEY`** *(required)* - Your OpenAI API key for accessing Sora 2 API
+- **`APP_PASSWORD`** *(required during setup)* - Password protection for your deployment. Prevents unauthorized users from accessing your app and consuming your API credits. Can be removed later in Vercel Project Settings if you want to make the deployment public.
+- **`NEXT_PUBLIC_FILE_STORAGE_MODE`** *(optional, auto-detected)* - Automatically set to `indexeddb` when running on Vercel. Videos are stored in your browser instead of the server. No need to configure this manually.
+
+### 🔐 Advanced: Protected Preview Deployments
+
+If you want your deployment protected by Vercel team authentication instead of being publicly accessible:
+
+1. **Create a new branch** in your GitHub repo (e.g., `production`):
+   - Via GitHub UI: Branches → New branch
+   - Or locally: `git checkout -b production && git push -u origin production`
+2. **Go to Vercel:** Project Settings → Git → Production Branch
+3. **Change** from `master` to `production`
+4. **Result:**
+   - Deployments from `master` branch → Preview deployments (requires Vercel login to access)
+   - Deployments from `production` branch → Public production deployments
+
+### Post-Deployment:
+
+- Videos are automatically stored in your browser's IndexedDB (no server storage)
+- You can add, modify, or remove environment variables anytime in Vercel Project Settings
+- You can add a custom domain in Vercel Project Settings → Domains
 
 ## 🚀 Getting Started [Local Deployment]
 

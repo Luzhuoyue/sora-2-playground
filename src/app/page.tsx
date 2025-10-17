@@ -21,7 +21,11 @@ const isOnVercelClient = vercelEnvClient === 'production' || vercelEnvClient ===
 
 let effectiveStorageModeClient: 'fs' | 'indexeddb';
 
-if (explicitModeClient === 'fs') {
+// Prevent fs mode on Vercel (filesystem is read-only/ephemeral)
+if (isOnVercelClient && explicitModeClient === 'fs') {
+    console.warn('fs mode is not supported on Vercel, forcing indexeddb mode');
+    effectiveStorageModeClient = 'indexeddb';
+} else if (explicitModeClient === 'fs') {
     effectiveStorageModeClient = 'fs';
 } else if (explicitModeClient === 'indexeddb') {
     effectiveStorageModeClient = 'indexeddb';
