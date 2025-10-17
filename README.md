@@ -3,7 +3,7 @@
 A web-based playground to interact with OpenAI's Sora 2 models for creating videos.
 
 <p align="center">
-  <img src="./readme-images/interface.png" alt="Interface" width="800"/>
+  <img src="./readme-images/interface.png" alt="Interface" width="1000"/>
 </p>
 
 ## ✨ Features
@@ -39,6 +39,122 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
     *   **IndexedDB:** Videos saved directly in the browser's IndexedDB (ideal for serverless deployments like Vercel).
     *   Video history metadata is always saved in the browser's local storage.
     *   Active job IDs are persisted - resume polling automatically after page refresh.
+
+## 🚀 Getting Started [Local Deployment]
+
+Follow these steps to get the playground running locally.
+
+### Prerequisites
+
+*   [Node.js](https://nodejs.org/) (Version 20 or later required)
+*   [npm](https://www.npmjs.com/), [yarn](https://yarnpkg.com/), [pnpm](https://pnpm.io/), or [bun](https://bun.sh/)
+
+### 1. Set Up API Key 🟢
+
+You need an OpenAI API key to use this application.
+
+⚠️ **Your OpenAI Organization needs access to Sora 2 API** - This is currently in limited beta. Check [OpenAI's documentation](https://platform.openai.com/docs) for availability.
+
+**Quick start:** Rename `.env.local.example` to `.env.local` and update the values, or create a new `.env.local` file manually.
+
+1.  If you don't have a `.env.local` file, create one (or rename `.env.local.example`).
+2.  Add your OpenAI API key to the `.env.local` file:
+
+    ```dotenv
+    OPENAI_API_KEY=your_openai_api_key_here
+    ```
+
+    **Important:** Keep your API key secret. The `.env.local` file is included in `.gitignore` by default to prevent accidental commits.
+
+<details>
+<summary><b>🟡 Optional Environment Variables</b> (click to expand)</summary>
+
+<br/>
+
+#### Password Protection
+
+Add password authentication to protect your local deployment:
+
+```dotenv
+APP_PASSWORD=your_password_here
+```
+
+When `APP_PASSWORD` is set, the application will prompt for authentication on page load. This prevents unauthorized access to your deployment.
+
+<p align="center">
+  <img src="./readme-images/password-dialog.png" alt="Password Dialog" width="460"/>
+</p>
+
+---
+
+#### File Storage Mode
+
+Configure where generated videos are stored:
+
+```dotenv
+NEXT_PUBLIC_FILE_STORAGE_MODE=fs  # or indexeddb
+```
+
+**Defaults:**
+- **Local deployments:** `fs` (filesystem) - Videos saved to `./generated-videos` directory (includes video, thumbnail, and spritesheet files)
+- **Vercel deployments:** `indexeddb` (browser storage) - Videos stored in your browser's IndexedDB
+
+**Available modes:**
+- **`fs` (filesystem):** Videos saved to the server's `./generated-videos` directory. Only works for local deployments or hosting with persistent filesystem.
+- **`indexeddb` (browser storage):** Videos downloaded from OpenAI and stored in the browser's IndexedDB. Ideal for serverless/ephemeral environments.
+
+**Important:** If you explicitly set `NEXT_PUBLIC_FILE_STORAGE_MODE=fs` on Vercel, it will be automatically overridden to `indexeddb` to prevent errors (Vercel's filesystem is read-only/ephemeral).
+
+For local development, you can use either mode. If not set, the application auto-detects the environment.
+
+---
+
+#### Custom API Endpoint
+
+If you need to use an OpenAI-compatible API endpoint (e.g., a local model server or a different provider), you can specify its base URL using the `OPENAI_API_BASE_URL` environment variable in your `.env.local` file:
+
+```dotenv
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
+```
+
+If `OPENAI_API_BASE_URL` is not set, the application will default to the standard OpenAI API endpoint.
+
+</details>
+
+---
+
+### 2. Install Dependencies 🟢
+
+Navigate to the project directory in your terminal and install the necessary packages:
+
+```bash
+npm install
+# or
+# yarn install
+# or
+# pnpm install
+# or
+# bun install
+```
+
+### 3. Run the Development Server 🟢
+
+Start the Next.js development server:
+
+```bash
+npm run dev
+# or
+# yarn dev
+# or
+# pnpm dev
+# or
+# bun dev
+```
+
+### 4. Open the Playground 🟢
+
+Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use the Sora 2 Playground!
 
 ## ▲ Deploy to Vercel
 
@@ -87,108 +203,6 @@ If you want your deployment protected by Vercel team authentication instead of b
 - Videos are automatically stored in your browser's IndexedDB (no server storage)
 - You can add, modify, or remove environment variables anytime in Vercel Project Settings
 - You can add a custom domain in Vercel Project Settings → Domains
-
-## 🚀 Getting Started [Local Deployment]
-
-Follow these steps to get the playground running locally.
-
-### Prerequisites
-
-*   [Node.js](https://nodejs.org/) (Version 20 or later required)
-*   [npm](https://www.npmjs.com/), [yarn](https://yarnpkg.com/), [pnpm](https://pnpm.io/), or [bun](https://bun.sh/)
-
-### 1. Set Up API Key 🟢
-
-You need an OpenAI API key to use this application.
-
-⚠️ **Your OpenAI Organization needs access to Sora 2 API** - This is currently in limited beta. Check [OpenAI's documentation](https://platform.openai.com/docs) for availability.
-
-1.  If you don't have a `.env.local` file, create one.
-2.  Add your OpenAI API key to the `.env.local` file:
-
-    ```dotenv
-    OPENAI_API_KEY=your_openai_api_key_here
-    ```
-
-    **Important:** Keep your API key secret. The `.env.local` file is included in `.gitignore` by default to prevent accidental commits.
-
----
-
-#### 🟡 (Optional) IndexedDB Mode (for serverless hosts) [e.g. Vercel]
-
-For environments where the filesystem is read-only or ephemeral (like Vercel serverless functions), you can configure the application to store generated videos directly in the browser's IndexedDB using Dexie.js.
-
-Set the following environment variable in your `.env.local` file or directly in your hosting provider's UI (like Vercel):
-
-```dotenv
-NEXT_PUBLIC_FILE_STORAGE_MODE=indexeddb
-```
-
-When this variable is set to `indexeddb`:
-*   The server API downloads videos from OpenAI and streams them to the client.
-*   The client-side application stores the video blob (and thumbnail) in IndexedDB.
-*   Videos are served directly from the browser's storage using Blob URLs.
-
-If this variable is **not set** or has any other value, the application defaults to the standard behavior of saving videos to the `./generated-videos` directory on the server's filesystem (includes `{id}_video.mp4`, `{id}_thumbnail.webp`, and `{id}_spritesheet.jpg`).
-
-**Note:** If `NEXT_PUBLIC_FILE_STORAGE_MODE` is not set, the application will automatically detect if it's running on Vercel and default to `indexeddb` mode. Otherwise (e.g., running locally), it defaults to `fs` mode. You can always explicitly set the variable to `fs` or `indexeddb` to override this automatic behavior.
-
-#### 🟡 (Optional) Use a Custom API Endpoint
-
-If you need to use an OpenAI-compatible API endpoint (e.g., a local model server or a different provider), you can specify its base URL using the `OPENAI_API_BASE_URL` environment variable in your `.env.local` file:
-
-```dotenv
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_API_BASE_URL=your_compatible_api_endpoint_here
-```
-
-If `OPENAI_API_BASE_URL` is not set, the application will default to the standard OpenAI API endpoint.
-
----
-
-
-#### 🟡 (Optional) Enable Password Validation
-```dotenv
-APP_PASSWORD=your_password_here
-```
-When `APP_PASSWORD` is set, the frontend will prompt you for a password to authenticate requests.
-<p align="center">
-  <img src="./readme-images/password-dialog.png" alt="Password Dialog" width="460"/>
-</p>
-
----
-
-### 2. Install Dependencies 🟢
-
-Navigate to the project directory in your terminal and install the necessary packages:
-
-```bash
-npm install
-# or
-# yarn install
-# or
-# pnpm install
-# or
-# bun install
-```
-
-### 3. Run the Development Server 🟢
-
-Start the Next.js development server:
-
-```bash
-npm run dev
-# or
-# yarn dev
-# or
-# pnpm dev
-# or
-# bun dev
-```
-
-### 4. Open the Playground 🟢
-
-Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use the Sora 2 Playground!
 
 ## 🤝 Contributing
 
