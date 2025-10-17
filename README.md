@@ -6,6 +6,12 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
   <img src="./readme-images/interface.png" alt="Interface" width="1000"/>
 </p>
 
+## 📚 Quick Links
+
+- [✨ Features](#-features)
+- [🚀 Getting Started (Local)](#-getting-started-local-deployment)
+- [▲ Deploy to Vercel](#-deploy-to-vercel)
+
 ## ✨ Features
 
 *   **🎬 Video Creation Mode:** Generate new videos from text prompts using Sora 2 or Sora 2 Pro.
