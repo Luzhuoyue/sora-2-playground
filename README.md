@@ -2,6 +2,19 @@
 
 A web-based playground to interact with OpenAI's Sora 2 models for creating videos.
 
+
+<p align="center">
+  <a href="https://alasano.github.io/sora-2-playground/" style="font-size: 1.5em; font-weight: bold;">
+    🚀 Try it Online
+  </a>
+  <br/>
+  <em>No installation required, bring your own API key</em>
+  <br/>
+  <br/>
+  • • •
+</p>
+
+
 <p align="center">
   <img src="./readme-images/interface.png" alt="Interface" width="1000"/>
   <br/>
@@ -10,9 +23,10 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
 
 ## 📚 Quick Links
 
+- [🚀 Try it Online](https://alasano.github.io/sora-2-playground/) - Frontend-only mode
 - [✨ Features](#-features)
 - [🔀 Deployment Modes](#-deployment-modes)
-- [🚀 Getting Started (Local)](#-getting-started-local-deployment)
+- [🏠 Getting Started (Local)](#-getting-started-local-deployment)
 - [▲ Deploy to Vercel](#-deploy-to-vercel)
 
 ## ✨ Features
