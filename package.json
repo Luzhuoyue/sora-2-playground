@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "build:frontend": "node scripts/toggle-api-routes.js disable && cross-env NEXT_PUBLIC_ENABLE_FRONTEND_MODE=true next build && node scripts/toggle-api-routes.js restore",
+    "build:frontend": "node scripts/build-frontend.js",
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write \"src/**/*.{ts,tsx}\""
