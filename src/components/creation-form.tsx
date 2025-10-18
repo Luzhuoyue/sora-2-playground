@@ -1,5 +1,6 @@
 'use client';
 
+import type { VideoModel, VideoSeconds, VideoSize } from 'openai/resources/videos';
 import { ModeToggle } from '@/components/mode-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,14 +9,14 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Lock, LockOpen, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import * as React from 'react';
 
 export type CreationFormData = {
-    model: 'sora-2' | 'sora-2-pro';
+    model: VideoModel;
     prompt: string;
-    size: string;
-    seconds: number;
+    size: VideoSize;
+    seconds: VideoSeconds;
     input_reference?: File;
 };
 
@@ -24,17 +25,14 @@ type CreationFormProps = {
     isLoading: boolean;
     currentMode: 'create' | 'remix';
     onModeChange: (mode: 'create' | 'remix') => void;
-    isPasswordRequiredByBackend: boolean | null;
-    clientPasswordHash: string | null;
-    onOpenPasswordDialog: () => void;
-    model: 'sora-2' | 'sora-2-pro';
-    setModel: React.Dispatch<React.SetStateAction<'sora-2' | 'sora-2-pro'>>;
+    model: VideoModel;
+    setModel: React.Dispatch<React.SetStateAction<VideoModel>>;
     prompt: string;
     setPrompt: React.Dispatch<React.SetStateAction<string>>;
-    size: string;
-    setSize: React.Dispatch<React.SetStateAction<string>>;
-    seconds: number;
-    setSeconds: React.Dispatch<React.SetStateAction<number>>;
+    size: VideoSize;
+    setSize: React.Dispatch<React.SetStateAction<VideoSize>>;
+    seconds: VideoSeconds;
+    setSeconds: React.Dispatch<React.SetStateAction<VideoSeconds>>;
     inputReference: File | null;
     setInputReference: React.Dispatch<React.SetStateAction<File | null>>;
 };
@@ -44,9 +42,6 @@ export function CreationForm({
     isLoading,
     currentMode,
     onModeChange,
-    isPasswordRequiredByBackend,
-    clientPasswordHash,
-    onOpenPasswordDialog,
     model,
     setModel,
     prompt,
@@ -91,16 +86,6 @@ export function CreationForm({
                 <div>
                     <div className='flex items-center'>
                         <CardTitle className='py-1 text-lg font-medium text-white'>Create Video</CardTitle>
-                        {isPasswordRequiredByBackend && (
-                            <Button
-                                variant='ghost'
-                                size='icon'
-                                onClick={onOpenPasswordDialog}
-                                className='ml-2 text-white/60 hover:text-white'
-                                aria-label='Configure Password'>
-                                {clientPasswordHash ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
-                            </Button>
-                        )}
                     </div>
                     <CardDescription className='mt-1 text-white/60'>
                         Generate a new video from a text prompt using Sora 2.
@@ -109,7 +94,7 @@ export function CreationForm({
                 <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
             </CardHeader>
             <form onSubmit={handleSubmit} className='flex h-full flex-1 flex-col overflow-hidden'>
-                <CardContent className='flex-1 space-y-5 overflow-y-auto p-4'>
+                <CardContent className='flex-1 space-y-5 overflow-y-auto p-4 lg:overflow-visible'>
                     <div className='space-y-1.5'>
                         <Label htmlFor='prompt' className='text-white'>
                             Prompt
@@ -121,7 +106,7 @@ export function CreationForm({
                             onChange={(e) => setPrompt(e.target.value)}
                             required
                             disabled={isLoading}
-                            className='min-h-[100px] rounded-md border border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
+                            className='min-h-[100px] resize-none rounded-md border border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
                         />
                         <p className='text-xs text-white/40'>
                             Describe: shot type, subject, action, setting, and lighting for best results.
@@ -135,7 +120,7 @@ export function CreationForm({
                         <Select
                             value={model}
                             onValueChange={(value) => {
-                                const newModel = value as 'sora-2' | 'sora-2-pro';
+                                const newModel = value as VideoModel;
                                 setModel(newModel);
                                 // If switching to sora-2 and currently have 1080p selected, switch to portrait 720p
                                 if (newModel === 'sora-2' && (size === '1024x1792' || size === '1792x1024')) {
@@ -163,7 +148,7 @@ export function CreationForm({
                         <Label htmlFor='size-select' className='text-white'>
                             Size (Resolution)
                         </Label>
-                        <Select value={size} onValueChange={setSize} disabled={isLoading}>
+                        <Select value={size} onValueChange={(value) => setSize(value as VideoSize)} disabled={isLoading}>
                             <SelectTrigger
                                 id='size-select'
                                 className='rounded-md border border-white/20 bg-black text-white focus:border-white/50 focus:ring-white/50'>
@@ -201,8 +186,8 @@ export function CreationForm({
                     <div className='space-y-2'>
                         <Label className='text-white'>Duration</Label>
                         <RadioGroup
-                            value={seconds.toString()}
-                            onValueChange={(value) => setSeconds(parseInt(value))}
+                            value={seconds}
+                            onValueChange={(value) => setSeconds(value as VideoSeconds)}
                             disabled={isLoading}
                             className='flex gap-4'>
                             <div className='flex items-center space-x-2'>

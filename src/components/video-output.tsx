@@ -121,7 +121,7 @@ export function VideoOutput({
     const isCompletedWithVideo = Boolean(completedOutput);
 
     return (
-        <Card className='flex h-full w-full flex-col overflow-hidden rounded-lg border border-white/10 bg-black'>
+        <Card className='flex h-full w-full flex-1 flex-col overflow-hidden rounded-lg border border-white/10 bg-black'>
             <CardHeader className='border-b border-white/10 pb-4'>
                 <div className='flex items-center justify-between'>
                     <div>

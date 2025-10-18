@@ -1,28 +1,59 @@
 'use client';
 
+import type { VideoModel, VideoSeconds, VideoSize } from 'openai/resources/videos';
 import { CreationForm, type CreationFormData } from '@/components/creation-form';
 import { RemixForm, type RemixFormData } from '@/components/remix-form';
 import { VideoHistoryPanel } from '@/components/video-history-panel';
 import { VideoOutput } from '@/components/video-output';
 import { PasswordDialog } from '@/components/password-dialog';
+import { ApiKeyDialog } from '@/components/api-key-dialog';
+import { ApiKeyGate } from '@/components/api-key-gate';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AlertCircle } from 'lucide-react';
 import { calculateVideoCost } from '@/lib/cost-utils';
 import { db, type VideoRecord } from '@/lib/db';
+import { VideoService, type ApiMode } from '@/lib/video-service';
+import { verifyFrontendApiKey } from '@/lib/openai-client';
+import { InvalidApiKeyError } from '@/lib/errors';
 import { useLiveQuery } from 'dexie-react-hooks';
 import * as React from 'react';
 import type { VideoJob, VideoMetadata } from '@/types/video';
+
+const VIDEO_SECONDS_VALUES = ['4', '8', '12'] as const;
+
+const toVideoSeconds = (value: number | string): VideoSeconds => {
+    const normalized = value.toString();
+    if ((VIDEO_SECONDS_VALUES as readonly string[]).includes(normalized)) {
+        return normalized as VideoSeconds;
+    }
+    throw new Error(`Unsupported video seconds value: ${value}`);
+};
 
 const explicitModeClient = process.env.NEXT_PUBLIC_FILE_STORAGE_MODE;
 const vercelEnvClient = process.env.NEXT_PUBLIC_VERCEL_ENV;
 const isOnVercelClient = vercelEnvClient === 'production' || vercelEnvClient === 'preview';
 
+// Frontend mode detection
+const isFrontendModeEnabled = process.env.NEXT_PUBLIC_ENABLE_FRONTEND_MODE === 'true';
+
+const initialApiMode: ApiMode = isFrontendModeEnabled ? 'frontend' : 'backend';
+const getStoredApiKey = (): string | null => {
+    if (typeof window === 'undefined' || !isFrontendModeEnabled) {
+        return null;
+    }
+    return localStorage.getItem('openaiApiKey');
+};
+
 let effectiveStorageModeClient: 'fs' | 'indexeddb';
 
-// Prevent fs mode on Vercel (filesystem is read-only/ephemeral)
-if (isOnVercelClient && explicitModeClient === 'fs') {
+// Frontend mode always uses indexeddb (no backend filesystem available)
+if (isFrontendModeEnabled) {
+    effectiveStorageModeClient = 'indexeddb';
+    console.log('Frontend mode enabled - forcing indexeddb storage');
+} else if (isOnVercelClient && explicitModeClient === 'fs') {
+    // Prevent fs mode on Vercel (filesystem is read-only/ephemeral)
     console.warn('fs mode is not supported on Vercel, forcing indexeddb mode');
     effectiveStorageModeClient = 'indexeddb';
 } else if (explicitModeClient === 'fs') {
@@ -36,18 +67,25 @@ if (isOnVercelClient && explicitModeClient === 'fs') {
 }
 
 console.log(
-    `Client Effective Storage Mode: ${effectiveStorageModeClient} (Explicit: ${explicitModeClient || 'unset'}, Vercel Env: ${vercelEnvClient || 'N/A'})`
+    `Client Effective Storage Mode: ${effectiveStorageModeClient} (Explicit: ${explicitModeClient || 'unset'}, Vercel Env: ${vercelEnvClient || 'N/A'}, Frontend Mode: ${isFrontendModeEnabled})`
 );
 
 export default function HomePage() {
     const [mode, setMode] = React.useState<'create' | 'remix'>('create');
-    const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(null);
+    const [isPasswordRequiredByBackend, setIsPasswordRequiredByBackend] = React.useState<boolean | null>(
+        isFrontendModeEnabled ? false : null
+    );
     const [clientPasswordHash, setClientPasswordHash] = React.useState<string | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const [isPasswordDialogOpen, setIsPasswordDialogOpen] = React.useState(false);
     const [passwordDialogContext, setPasswordDialogContext] = React.useState<'initial' | 'retry'>('initial');
     const [forceDeleteDialogOpen, setForceDeleteDialogOpen] = React.useState(false);
     const [itemToForceDelete, setItemToForceDelete] = React.useState<VideoMetadata | null>(null);
+
+    // Frontend mode state
+    const [apiMode, setApiMode] = React.useState<ApiMode>(initialApiMode);
+    const [clientApiKey, setClientApiKey] = React.useState<string | null>(() => getStoredApiKey());
+    const [isApiKeyDialogOpen, setIsApiKeyDialogOpen] = React.useState(false);
 
     // Job tracking
     const [activeJobs, setActiveJobs] = React.useState<Map<string, VideoJob>>(new Map());
@@ -79,10 +117,10 @@ export default function HomePage() {
     const [isInitialLoad, setIsInitialLoad] = React.useState(true);
 
     // Creation form state
-    const [createModel, setCreateModel] = React.useState<'sora-2' | 'sora-2-pro'>('sora-2');
+    const [createModel, setCreateModel] = React.useState<VideoModel>('sora-2');
     const [createPrompt, setCreatePrompt] = React.useState('');
-    const [createSize, setCreateSize] = React.useState('720x1280');
-    const [createSeconds, setCreateSeconds] = React.useState(4);
+    const [createSize, setCreateSize] = React.useState<VideoSize>('720x1280');
+    const [createSeconds, setCreateSeconds] = React.useState<VideoSeconds>('4');
     const [createInputReference, setCreateInputReference] = React.useState<File | null>(null);
 
     // Remix form state
@@ -124,6 +162,15 @@ export default function HomePage() {
 
     // Check password requirement and validate stored hash
     React.useEffect(() => {
+        if (isFrontendModeEnabled) {
+            setIsPasswordRequiredByBackend(false);
+            setClientPasswordHash(null);
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('clientPasswordHash');
+            }
+            return;
+        }
+
         const fetchAuthStatus = async () => {
             try {
                 // Check if we have a stored password hash
@@ -185,6 +232,39 @@ export default function HomePage() {
         }
     }, [clientPasswordHash, isPasswordRequiredByBackend]);
 
+    // Initialize frontend mode and API key
+    React.useEffect(() => {
+        if (!isFrontendModeEnabled) {
+            return;
+        }
+        if (apiMode !== 'frontend') {
+            setApiMode('frontend');
+        }
+        if (clientApiKey !== null) {
+            return;
+        }
+        const storedApiKey = getStoredApiKey();
+        if (storedApiKey) {
+            setClientApiKey(storedApiKey);
+        }
+    }, [apiMode, clientApiKey]);
+
+    React.useEffect(() => {
+        if (isFrontendModeEnabled) {
+            console.log('Frontend mode enabled');
+        }
+    }, []);
+
+    // Create VideoService instance
+    const videoService = React.useMemo(() => {
+        return new VideoService({
+            mode: apiMode,
+            clientApiKey,
+            clientPasswordHash,
+            baseURL: process.env.NEXT_PUBLIC_OPENAI_API_BASE_URL
+        });
+    }, [apiMode, clientApiKey, clientPasswordHash]);
+
     // Cleanup polling interval on unmount
     React.useEffect(() => {
         return () => {
@@ -220,10 +300,53 @@ export default function HomePage() {
         }
     };
 
-    const handleOpenPasswordDialog = () => {
-        setPasswordDialogContext('initial');
-        setIsPasswordDialogOpen(true);
+    const handleSaveApiKey = async (apiKey: string) => {
+        const trimmedKey = apiKey.trim();
+
+        if (!trimmedKey) {
+            throw new Error('API key cannot be empty.');
+        }
+
+        if (!trimmedKey.startsWith('sk-')) {
+            throw new Error('API key format looks incorrect. It should start with “sk-”.');
+        }
+
+        try {
+            await verifyFrontendApiKey(trimmedKey, process.env.NEXT_PUBLIC_OPENAI_API_BASE_URL);
+        } catch (error) {
+            if (error instanceof InvalidApiKeyError) {
+                throw new Error('OpenAI rejected this API key. Please double-check and try again.');
+            }
+            console.error('Error verifying API key:', error);
+            throw new Error('Failed to verify API key. Please try again.');
+        }
+
+        try {
+            localStorage.setItem('openaiApiKey', trimmedKey);
+        } catch (storageError) {
+            console.error('Error saving API key:', storageError);
+            throw new Error('Failed to persist API key. Please ensure storage is available.');
+        }
+
+        setClientApiKey(trimmedKey);
+        setError(null);
     };
+
+    const handleOpenApiKeyDialog = () => {
+        setIsApiKeyDialogOpen(true);
+    };
+
+    const handleInvalidApiKey = React.useCallback(
+        (message = 'Your OpenAI API key was rejected. Please enter a new key.') => {
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('openaiApiKey');
+            }
+            setClientApiKey(null);
+            setIsApiKeyDialogOpen(true);
+            setError(message);
+        },
+        [setClientApiKey, setError, setIsApiKeyDialogOpen]
+    );
 
     const getVideoSrc = React.useCallback(
         (id: string): string | undefined => {
@@ -238,7 +361,7 @@ export default function HomePage() {
                 return videoSrcCache.get(id);
             }
 
-            // Check IndexedDB
+            // Check IndexedDB (always used in frontend mode and indexeddb storage mode)
             const record = allDbVideos?.find((vid) => vid.id === id);
             if (record?.blob) {
                 const url = URL.createObjectURL(record.blob);
@@ -246,6 +369,12 @@ export default function HomePage() {
                 return url;
             }
 
+            // Frontend mode only uses IndexedDB - if not found, video hasn't been downloaded yet
+            if (apiMode === 'frontend') {
+                return undefined;
+            }
+
+            // Backend mode: use API endpoints
             // Don't attempt API call if we haven't determined password requirement yet
             if (isPasswordRequiredByBackend === null) {
                 return undefined;
@@ -263,7 +392,7 @@ export default function HomePage() {
             }
             return url;
         },
-        [allDbVideos, videoSrcCache, history, isPasswordRequiredByBackend, clientPasswordHash]
+        [allDbVideos, videoSrcCache, history, isPasswordRequiredByBackend, clientPasswordHash, apiMode]
     );
 
     const getThumbnailSrc = React.useCallback(
@@ -274,11 +403,18 @@ export default function HomePage() {
                 return undefined;
             }
 
+            // Check IndexedDB (always used in frontend mode and indexeddb storage mode)
             const record = allDbVideos?.find((vid) => vid.id === id);
             if (record?.thumbnail) {
                 return URL.createObjectURL(record.thumbnail);
             }
 
+            // Frontend mode only uses IndexedDB - if not found, thumbnail hasn't been downloaded yet
+            if (apiMode === 'frontend') {
+                return undefined;
+            }
+
+            // Backend mode: use API endpoints
             // Don't attempt API call if we haven't determined password requirement yet
             if (isPasswordRequiredByBackend === null) {
                 return undefined;
@@ -296,7 +432,7 @@ export default function HomePage() {
             }
             return url;
         },
-        [allDbVideos, history, isPasswordRequiredByBackend, clientPasswordHash]
+        [allDbVideos, history, isPasswordRequiredByBackend, clientPasswordHash, apiMode]
     );
 
     // Single polling interval for all active jobs
@@ -337,20 +473,8 @@ export default function HomePage() {
                 // Poll each job sequentially
                 for (const [jobId, job] of currentRealJobs) {
                     try {
-                        const response = await fetch(`/api/videos/${jobId}`, {
-                                headers: clientPasswordHash
-                                    ? {
-                                          'x-password-hash': clientPasswordHash
-                                      }
-                                    : {}
-                            });
-
-                            if (!response.ok) {
-                                throw new Error(`Failed to fetch job status: ${response.statusText}`);
-                            }
-
-                            const jobUpdate: VideoJob = await response.json();
-                            console.log(`Job ${jobId} status: ${jobUpdate.status}, progress: ${jobUpdate.progress}`);
+                        const jobUpdate: VideoJob = await videoService.retrieveVideo(jobId);
+                        console.log(`Job ${jobId} status: ${jobUpdate.status}, progress: ${jobUpdate.progress}`);
 
                             // Update active jobs
                             setActiveJobs(prev => {
@@ -398,6 +522,10 @@ export default function HomePage() {
                                     prompt: job.prompt || jobUpdate.prompt,
                                     remix_of: job.remix_of || jobUpdate.remix_of
                                 }).catch(err => {
+                                    if (err instanceof InvalidApiKeyError) {
+                                        handleInvalidApiKey();
+                                        return;
+                                    }
                                     console.error(`Error downloading completed video ${jobId}:`, err);
                                     setError(err instanceof Error ? err.message : 'Failed to download video');
                                 });
@@ -426,6 +554,12 @@ export default function HomePage() {
                                 setError(jobUpdate.error?.message || 'Video generation failed');
                             }
                     } catch (err) {
+                        if (err instanceof InvalidApiKeyError) {
+                            handleInvalidApiKey();
+                            setActiveJobs(new Map());
+                            saveActiveJobIds(new Map());
+                            return;
+                        }
                         console.error(`Error polling job ${jobId}:`, err);
                         // Don't stop polling other jobs if one fails
                     }
@@ -445,7 +579,7 @@ export default function HomePage() {
         // Note: Only clear if we're about to create a new one or unmounting
         return undefined;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeJobIdsKey, clientPasswordHash]);
+    }, [activeJobIdsKey, clientPasswordHash, clientApiKey, apiMode]);
 
     // Resume active jobs on initial load
     React.useEffect(() => {
@@ -472,7 +606,7 @@ export default function HomePage() {
                         status: 'in_progress', // Will be updated by polling
                         model: item.model,
                         progress: item.progress || 0,
-                        seconds: item.seconds.toString(),
+                        seconds: toVideoSeconds(item.seconds),
                         size: item.size,
                         prompt: item.prompt,
                         remix_of: item.remix_of
@@ -495,62 +629,44 @@ export default function HomePage() {
 
         try {
             // Download video content
-            const response = await fetch(`/api/videos/${job.id}/content`, {
-                headers: clientPasswordHash
-                    ? {
-                          'x-password-hash': clientPasswordHash
-                      }
-                    : {}
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to download video: ${response.statusText}`);
-            }
-
-            const blob = await response.blob();
+            const blob = await videoService.downloadContent(job.id, 'video');
             const filename = `${job.id}.mp4`;
 
             // Download thumbnail proactively
             let thumbnailBlob: Blob | undefined;
             try {
                 console.log(`Downloading thumbnail for video ${job.id}...`);
-                const thumbnailResponse = await fetch(`/api/videos/${job.id}/content?variant=thumbnail`, {
-                    headers: clientPasswordHash
-                        ? {
-                              'x-password-hash': clientPasswordHash
-                          }
-                        : {}
-                });
-                if (thumbnailResponse.ok) {
-                    thumbnailBlob = await thumbnailResponse.blob();
-                    console.log(`Downloaded thumbnail for video ${job.id}`);
-                } else if (thumbnailResponse.status === 404) {
-                    console.warn(`Thumbnail not available yet for ${job.id}, skipping`);
+                thumbnailBlob = await videoService.downloadContent(job.id, 'thumbnail');
+                console.log(`Downloaded thumbnail for video ${job.id}`);
+            } catch (err: unknown) {
+                if (err instanceof InvalidApiKeyError) {
+                    handleInvalidApiKey();
+                    return;
                 }
-            } catch (err) {
-                console.error(`Error downloading thumbnail for ${job.id}:`, err);
+                if (typeof err === 'object' && err !== null && 'status' in err && (err as { status?: number }).status === 404) {
+                    console.warn(`Thumbnail not available yet for ${job.id}, skipping`);
+                } else {
+                    console.error(`Error downloading thumbnail for ${job.id}:`, err);
+                }
             }
 
             // Download spritesheet proactively (for future timeline scrubbing)
             try {
                 console.log(`Downloading spritesheet for video ${job.id}...`);
-                const spritesheetResponse = await fetch(`/api/videos/${job.id}/content?variant=spritesheet`, {
-                    headers: clientPasswordHash
-                        ? {
-                              'x-password-hash': clientPasswordHash
-                          }
-                        : {}
-                });
-                if (spritesheetResponse.ok) {
-                    await spritesheetResponse.blob();
-                    console.log(`Downloaded spritesheet for video ${job.id}`);
-                    // Spritesheet is saved to filesystem by the API endpoint
-                    // We're not storing it in IndexedDB for now since it's mainly for future features
-                } else if (spritesheetResponse.status === 404) {
-                    console.warn(`Spritesheet not available yet for ${job.id}, skipping`);
+                await videoService.downloadContent(job.id, 'spritesheet');
+                console.log(`Downloaded spritesheet for video ${job.id}`);
+                // Spritesheet is saved to filesystem by the API endpoint in backend mode
+                // We're not storing it in IndexedDB for now since it's mainly for future features
+            } catch (err: unknown) {
+                if (err instanceof InvalidApiKeyError) {
+                    handleInvalidApiKey();
+                    return;
                 }
-            } catch (err) {
-                console.error(`Error downloading spritesheet for ${job.id}:`, err);
+                if (typeof err === 'object' && err !== null && 'status' in err && (err as { status?: number }).status === 404) {
+                    console.warn(`Spritesheet not available yet for ${job.id}, skipping`);
+                } else {
+                    console.error(`Error downloading spritesheet for ${job.id}:`, err);
+                }
             }
 
             // Store in IndexedDB if needed
@@ -589,6 +705,10 @@ export default function HomePage() {
             });
             console.log(`Video ${job.id} completed and history updated`);
         } catch (err) {
+            if (err instanceof InvalidApiKeyError) {
+                handleInvalidApiKey();
+                return;
+            }
             console.error(`Error downloading video ${job.id}:`, err);
             setError(err instanceof Error ? err.message : 'Failed to download video');
         }
@@ -598,10 +718,18 @@ export default function HomePage() {
         setError(null);
         setIsSubmitting(true);
 
-        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+        // Backend mode: check password
+        if (apiMode === 'backend' && isPasswordRequiredByBackend && !clientPasswordHash) {
             setError('Password is required. Please configure the password by clicking the lock icon.');
             setPasswordDialogContext('initial');
             setIsPasswordDialogOpen(true);
+            setIsSubmitting(false);
+            return;
+        }
+
+        // Frontend mode: check API key (shouldn't reach here with gate, but defensive)
+        if (apiMode === 'frontend' && !clientApiKey) {
+            setError('OpenAI API key is required for frontend mode.');
             setIsSubmitting(false);
             return;
         }
@@ -615,7 +743,7 @@ export default function HomePage() {
             status: 'queued',
             model: formData.model,
             progress: 0,
-            seconds: formData.seconds.toString(),
+            seconds: formData.seconds,
             size: formData.size,
             prompt: formData.prompt
         };
@@ -625,38 +753,15 @@ export default function HomePage() {
         setCurrentJobId(tempId);
 
         try {
-            const apiFormData = new FormData();
-            if (isPasswordRequiredByBackend && clientPasswordHash) {
-                apiFormData.append('passwordHash', clientPasswordHash);
-            }
-
-            apiFormData.append('model', formData.model);
-            apiFormData.append('prompt', formData.prompt);
-            apiFormData.append('size', formData.size);
-            apiFormData.append('seconds', formData.seconds.toString());
-
-            if (formData.input_reference) {
-                apiFormData.append('input_reference', formData.input_reference);
-            }
-
             console.log('Creating video job...');
 
-            const response = await fetch('/api/videos', {
-                method: 'POST',
-                body: apiFormData
+            const result = await videoService.createVideo({
+                model: formData.model,
+                prompt: formData.prompt,
+                size: formData.size,
+                seconds: formData.seconds,
+                input_reference: formData.input_reference
             });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                if (response.status === 401 && isPasswordRequiredByBackend) {
-                    setError('Unauthorized: Invalid or missing password. Please try again.');
-                    setPasswordDialogContext('retry');
-                    setIsPasswordDialogOpen(true);
-                    return;
-                }
-                throw new Error(result.error || `API request failed with status ${response.status}`);
-            }
 
             console.log('Video job created:', result);
 
@@ -715,8 +820,12 @@ export default function HomePage() {
             setIsSubmitting(false);
         } catch (err: unknown) {
             console.error('Error creating video:', err);
-            const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
-            setError(errorMessage);
+            if (err instanceof InvalidApiKeyError) {
+                handleInvalidApiKey('The provided OpenAI API key was rejected. Please enter a valid key.');
+            } else {
+                const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
+                setError(errorMessage);
+            }
 
             // Remove temporary job on error
             setActiveJobs((prev) => {
@@ -733,10 +842,18 @@ export default function HomePage() {
         setError(null);
         setIsSubmitting(true);
 
-        if (isPasswordRequiredByBackend && !clientPasswordHash) {
+        // Backend mode: check password
+        if (apiMode === 'backend' && isPasswordRequiredByBackend && !clientPasswordHash) {
             setError('Password is required. Please configure the password by clicking the lock icon.');
             setPasswordDialogContext('initial');
             setIsPasswordDialogOpen(true);
+            setIsSubmitting(false);
+            return;
+        }
+
+        // Frontend mode: check API key (shouldn't reach here with gate, but defensive)
+        if (apiMode === 'frontend' && !clientApiKey) {
+            setError('OpenAI API key is required for frontend mode.');
             setIsSubmitting(false);
             return;
         }
@@ -763,28 +880,7 @@ export default function HomePage() {
         try {
             console.log(`Creating remix for video: ${formData.source_video_id}`);
 
-            const response = await fetch(`/api/videos/${formData.source_video_id}/remix`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    prompt: formData.prompt,
-                    passwordHash: clientPasswordHash
-                })
-            });
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                if (response.status === 401 && isPasswordRequiredByBackend) {
-                    setError('Unauthorized: Invalid or missing password. Please try again.');
-                    setPasswordDialogContext('retry');
-                    setIsPasswordDialogOpen(true);
-                    return;
-                }
-                throw new Error(result.error || `API request failed with status ${response.status}`);
-            }
+            const result = await videoService.remixVideo(formData.source_video_id, formData.prompt);
 
             console.log('Remix job created:', result);
 
@@ -846,8 +942,12 @@ export default function HomePage() {
             setIsSubmitting(false);
         } catch (err: unknown) {
             console.error('Error creating remix:', err);
-            const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
-            setError(errorMessage);
+            if (err instanceof InvalidApiKeyError) {
+                handleInvalidApiKey('The provided OpenAI API key was rejected. Please enter a valid key.');
+            } else {
+                const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred.';
+                setError(errorMessage);
+            }
 
             // Remove temporary job on error
             setActiveJobs((prev) => {
@@ -877,7 +977,7 @@ export default function HomePage() {
             status: item.status === 'failed' ? 'failed' : 'completed',
             model: item.model,
             progress: item.status === 'failed' ? (item.progress || 0) : 100,
-            seconds: item.seconds.toString(),
+            seconds: toVideoSeconds(item.seconds),
             size: item.size,
             prompt: item.prompt,
             ...(item.error && { error: { message: item.error } }),
@@ -931,29 +1031,23 @@ export default function HomePage() {
                     });
                     console.log('Deleted video from IndexedDB');
                 } else {
-                    // Delete from filesystem and OpenAI via API
-                    const response = await fetch(`/api/videos/${item.id}`, {
-                        method: 'DELETE',
-                        headers: clientPasswordHash
-                            ? {
-                                  'x-password-hash': clientPasswordHash
-                              }
-                            : {}
-                    });
-
-                    if (!response.ok) {
-                        const result = await response.json();
-
+                    // Delete from OpenAI via service (handles both backend and frontend modes)
+                    try {
+                        await videoService.deleteVideo(item.id);
+                        console.log('Deleted video from OpenAI');
+                    } catch (err: unknown) {
+                        if (err instanceof InvalidApiKeyError) {
+                            handleInvalidApiKey();
+                            return;
+                        }
                         // Handle "still processing" error with force delete option
-                        if (response.status === 400 && result.error?.includes('still being processed')) {
+                        if (err instanceof Error && err.message?.includes('still being processed')) {
                             setItemToForceDelete(item);
                             setForceDeleteDialogOpen(true);
                             return;
                         }
-
-                        throw new Error(result.error || 'Failed to delete video');
+                        throw err;
                     }
-                    console.log('Deleted video from filesystem and OpenAI');
                 }
             } else {
                 console.log(`Skipping storage/OpenAI deletion for ${item.status === 'failed' ? 'failed' : 'force local'} video ${item.id}`);
@@ -973,6 +1067,10 @@ export default function HomePage() {
                 });
             }
         } catch (err) {
+            if (err instanceof InvalidApiKeyError) {
+                handleInvalidApiKey();
+                return;
+            }
             console.error('Error deleting video:', err);
             setError(err instanceof Error ? err.message : 'Failed to delete video');
         }
@@ -1036,19 +1134,30 @@ export default function HomePage() {
             seconds: item.seconds
         }));
 
+    // Determine if API key gate should block
+    const isApiKeyGateBlocked = isFrontendModeEnabled && apiMode === 'frontend' && !clientApiKey;
+
     return (
         <main className='flex min-h-screen flex-col items-center bg-black p-4 text-white md:p-8 lg:p-12'>
-            <PasswordDialog
-                isOpen={isPasswordDialogOpen}
-                onOpenChange={setIsPasswordDialogOpen}
-                onSave={handleSavePassword}
-                isRequired={isPasswordRequiredByBackend === true && !clientPasswordHash}
-                title={passwordDialogContext === 'retry' ? 'Invalid Password' : 'Password Required'}
-                description={
-                    passwordDialogContext === 'retry'
-                        ? 'The password was incorrect. Please try again.'
-                        : 'This application is password-protected. Please enter the password to continue.'
-                }
+            {!isFrontendModeEnabled && (
+                <PasswordDialog
+                    isOpen={isPasswordDialogOpen}
+                    onOpenChange={setIsPasswordDialogOpen}
+                    onSave={handleSavePassword}
+                    isRequired={isPasswordRequiredByBackend === true && !clientPasswordHash}
+                    title={passwordDialogContext === 'retry' ? 'Invalid Password' : 'Password Required'}
+                    description={
+                        passwordDialogContext === 'retry'
+                            ? 'The password was incorrect. Please try again.'
+                            : 'This application is password-protected. Please enter the password to continue.'
+                    }
+                />
+            )}
+
+            <ApiKeyDialog
+                isOpen={isApiKeyDialogOpen}
+                onOpenChange={setIsApiKeyDialogOpen}
+                onSave={handleSaveApiKey}
             />
 
             <Dialog open={forceDeleteDialogOpen} onOpenChange={setForceDeleteDialogOpen}>
@@ -1087,48 +1196,46 @@ export default function HomePage() {
             </Dialog>
 
             <div className='w-full max-w-7xl space-y-6'>
-                <div className='grid grid-cols-1 gap-6 lg:grid-cols-2'>
-                    <div className='relative flex h-[70vh] min-h-[600px] flex-col lg:col-span-1'>
-                        <div className={mode === 'create' ? 'block h-full w-full' : 'hidden'}>
-                            <CreationForm
-                                onSubmit={handleCreateVideo}
-                                isLoading={isSubmitting}
-                                currentMode={mode}
-                                onModeChange={setMode}
-                                isPasswordRequiredByBackend={isPasswordRequiredByBackend}
-                                clientPasswordHash={clientPasswordHash}
-                                onOpenPasswordDialog={handleOpenPasswordDialog}
-                                model={createModel}
-                                setModel={setCreateModel}
-                                prompt={createPrompt}
-                                setPrompt={setCreatePrompt}
-                                size={createSize}
-                                setSize={setCreateSize}
-                                seconds={createSeconds}
-                                setSeconds={setCreateSeconds}
-                                inputReference={createInputReference}
-                                setInputReference={setCreateInputReference}
-                            />
-                        </div>
-                        <div className={mode === 'remix' ? 'block h-full w-full' : 'hidden'}>
-                            <RemixForm
-                                onSubmit={handleRemixVideo}
-                                isLoading={isSubmitting}
-                                currentMode={mode}
-                                onModeChange={setMode}
-                                isPasswordRequiredByBackend={isPasswordRequiredByBackend}
-                                clientPasswordHash={clientPasswordHash}
-                                onOpenPasswordDialog={handleOpenPasswordDialog}
-                                sourceVideoId={remixSourceVideoId}
-                                setSourceVideoId={setRemixSourceVideoId}
-                                remixPrompt={remixPrompt}
-                                setRemixPrompt={setRemixPrompt}
-                                completedVideos={completedVideos}
-                                getVideoSrc={getVideoSrc}
-                            />
-                        </div>
+                <div className='grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch'>
+                    <div className='relative flex min-h-[600px] flex-col lg:col-span-1'>
+                        <ApiKeyGate
+                            isBlocked={isApiKeyGateBlocked}
+                            onConfigure={handleOpenApiKeyDialog}
+                            className='flex-1'>
+                            {mode === 'create' ? (
+                                <CreationForm
+                                    onSubmit={handleCreateVideo}
+                                    isLoading={isSubmitting}
+                                    currentMode={mode}
+                                    onModeChange={setMode}
+                                    model={createModel}
+                                    setModel={setCreateModel}
+                                    prompt={createPrompt}
+                                    setPrompt={setCreatePrompt}
+                                    size={createSize}
+                                    setSize={setCreateSize}
+                                    seconds={createSeconds}
+                                    setSeconds={setCreateSeconds}
+                                    inputReference={createInputReference}
+                                    setInputReference={setCreateInputReference}
+                                />
+                            ) : (
+                                <RemixForm
+                                    onSubmit={handleRemixVideo}
+                                    isLoading={isSubmitting}
+                                    currentMode={mode}
+                                    onModeChange={setMode}
+                                    sourceVideoId={remixSourceVideoId}
+                                    setSourceVideoId={setRemixSourceVideoId}
+                                    remixPrompt={remixPrompt}
+                                    setRemixPrompt={setRemixPrompt}
+                                    completedVideos={completedVideos}
+                                    getVideoSrc={getVideoSrc}
+                                />
+                            )}
+                        </ApiKeyGate>
                     </div>
-                    <div className='flex h-[70vh] min-h-[600px] flex-col lg:col-span-1'>
+                    <div className='flex min-h-[600px] flex-col lg:col-span-1'>
                         {error && (
                             <Alert variant='destructive' className='mb-4 border-red-500/50 bg-red-900/20 text-red-300'>
                                 <AlertTitle className='text-red-200'>Error</AlertTitle>

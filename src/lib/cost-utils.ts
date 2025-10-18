@@ -1,6 +1,8 @@
+import type { VideoModel, VideoSize } from 'openai/resources/videos';
+
 type VideoUsage = {
-    model: 'sora-2' | 'sora-2-pro';
-    size: string;
+    model: VideoModel;
+    size: VideoSize;
     seconds: number;
 };
 

@@ -4,11 +4,14 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
 
 <p align="center">
   <img src="./readme-images/interface.png" alt="Interface" width="1000"/>
+  <br/>
+  <em>Main playground interface</em>
 </p>
 
 ## 📚 Quick Links
 
 - [✨ Features](#-features)
+- [🔀 Deployment Modes](#-deployment-modes)
 - [🚀 Getting Started (Local)](#-getting-started-local-deployment)
 - [▲ Deploy to Vercel](#-deploy-to-vercel)
 
@@ -18,6 +21,7 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
 *   **🎨 Video Remix Mode:** Make targeted changes to existing videos with new prompts.
 *   **⚙️ Full API Parameter Control:** Access and adjust all relevant parameters supported by the Sora 2 API directly through the UI (model selection, resolution, duration, optional input reference for first frame).
 *   **🔄 Multi-Video Queuing:** Queue multiple videos for generation simultaneously - create as many videos as you want while others are processing.
+*   **🔀 Two deployment modes:** backend (server API key) or frontend-only (user-supplied keys)
 
 *   **📜 Detailed History & Cost Tracking:**
     *   View a comprehensive history of all your video generations and remixes.
@@ -31,10 +35,14 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
 
 <p align="center">
   <img src="./readme-images/history.png" alt="Interface" width="1306"/>
+  <br/>
+  <em>Video history with cost tracking and status indicators</em>
 </p>
 
 <p align="center">
   <img src="./readme-images/cost-breakdown.png" alt="Interface" width="350"/>
+  <br/>
+  <em>Detailed cost breakdown per video</em>
 </p>
 
 *   **🎥 Video Output Panel:** View generated videos with built-in player controls, progress slider, and playback controls.
@@ -45,6 +53,28 @@ A web-based playground to interact with OpenAI's Sora 2 models for creating vide
     *   **IndexedDB:** Videos saved directly in the browser's IndexedDB (ideal for serverless deployments like Vercel).
     *   Video history metadata is always saved in the browser's local storage.
     *   Active job IDs are persisted - resume polling automatically after page refresh.
+
+## 🔀 Deployment Modes
+
+This playground supports two deployment architectures depending on your needs:
+
+| Feature | Backend Mode | Frontend Mode |
+|---------|--------------|---------------|
+| **OpenAI API Key Location** | Server-side (single shared key) | Client-side (user-supplied) |
+| **Password Protection** | ✅ Supported via `APP_PASSWORD` | ❌ Not supported |
+| **Storage** | Local disk or IndexedDB | IndexedDB only |
+| **Build Output** | Dynamic (includes API routes) | Static HTML/CSS/JS export |
+| **User Setup** | None (admin configures) | Each user provides their own API key |
+
+**Backend Mode** is the default, ideal for personal use or team deployments where you control the API key.
+
+**Frontend Mode** creates a static site that runs entirely in the browser, perfect for public deployments where each user brings their own API key.
+
+<p align="center">
+    <img src="./readme-images/frontend-mode.png" alt="Interface" width="350"/>
+    <br/>
+    <em>Frontend mode API key dialog</em>
+  </p>
 
 ## 🚀 Getting Started [Local Deployment]
 
@@ -89,7 +119,28 @@ When `APP_PASSWORD` is set, the application will prompt for authentication on pa
 
 <p align="center">
   <img src="./readme-images/password-dialog.png" alt="Password Dialog" width="460"/>
+  <br/>
+  <em>Password protection dialog (backend mode)</em>
 </p>
+
+#### Frontend-only Mode (Static)
+
+Want to run everything purely in the browser and let each user supply their own API key? Enable frontend mode:
+
+```dotenv
+NEXT_PUBLIC_ENABLE_FRONTEND_MODE=true
+```
+
+- The UI switches to frontend mode and stores videos in IndexedDB automatically.
+- The app password flow is disabled (there’s no secure way to enforce it client-side).
+- Build the static site with:
+
+  ```bash
+  pnpm build:frontend
+  ```
+
+  This generates an `out/` directory that you can host on GitHub Pages, Netlify, S3, etc.
+- Users will be prompted for their own OpenAI API key inside the browser—no server-side key required.
 
 ---
 
@@ -162,11 +213,31 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your web browser. You should now be able to use the Sora 2 Playground!
 
+### 📦 Building a Static Frontend Bundle
+
+If you enabled `NEXT_PUBLIC_ENABLE_FRONTEND_MODE`, produce a static export that you can host anywhere (S3, Netlify, GitHub Pages, etc.):
+
+```bash
+pnpm build:frontend
+```
+
+The compiled site will be available in the `out/` directory.
+
 ## ▲ Deploy to Vercel
 
-Deploy your own instance of this playground to Vercel with one click:
+Choose the deployment flavour that fits your use case:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/alasano/sora-2-playground&env=OPENAI_API_KEY,APP_PASSWORD&envDescription=OPENAI_API_KEY%20required.%20APP_PASSWORD%20required%20during%20setup%20(protects%20public%20deployment%2C%20removable%20in%20settings%20afterward).&project-name=sora-2-playground&repository-name=sora-2-playground)
+#### Backend Mode (server-side API key)
+
+[![Deploy backend mode](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/alasano/sora-2-playground&env=OPENAI_API_KEY,APP_PASSWORD&envDescription=OPENAI_API_KEY%20required.%20APP_PASSWORD%20required%20during%20setup%20(protects%20public%20deployment%2C%20removable%20in%20settings%20afterward).&project-name=sora-2-playground&repository-name=sora-2-playground)
+
+Store the OpenAI API key on the server and gate access with an optional password. (On Vercel the filesystem remains ephemeral, so videos still land in browser storage.)
+
+#### Frontend-only Mode (static, user-supplied key)
+
+[![Deploy frontend mode](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/alasano/sora-2-playground&env=NEXT_PUBLIC_ENABLE_FRONTEND_MODE&envDescription=Set%20NEXT_PUBLIC_ENABLE_FRONTEND_MODE%20to%20true%20so%20users%20provide%20their%20own%20OpenAI%20API%20key%20in%20browser.&project-name=sora-2-playground-frontend&repository-name=sora-2-playground-frontend)
+
+Runs entirely in the browser. Each visitor pastes their own OpenAI API key, everything is stored in IndexedDB, and the build can be hosted as static assets.
 
 ### What Happens When You Deploy:
 
@@ -177,19 +248,19 @@ Deploy your own instance of this playground to Vercel with one click:
 
 ### 🔒 Important Security Note:
 
-**Your deployment URL will be publicly accessible** by anyone who has the link. This is how Vercel works - production deployments from your master branch are public by default.
+**Production URLs on Vercel are public.** In backend mode an `APP_PASSWORD` is strongly recommended so random visitors can’t spend your API credits. Frontend mode doesn’t need (or support) password protection because the browser build can’t secure it.
 
-Without protection, anyone who discovers your URL can use your OpenAI API key to generate videos at your expense. This is why `APP_PASSWORD` is required during the initial setup to add authentication to your deployment.
+### Environment Variables
 
-You can remove `APP_PASSWORD` later through Vercel Project Settings if desired, but this will leave your deployment unprotected.
+**Backend mode** button prompts for:
 
-### Environment Variables:
+- `OPENAI_API_KEY` *(required)* – stored server-side and used for all video operations.
+- `APP_PASSWORD` *(required during setup)* – adds a password prompt to the UI. Remove it later in Vercel settings if you want the site open.
 
-During deployment, you'll be prompted to provide:
+**Frontend mode** button prompts for:
 
-- **`OPENAI_API_KEY`** *(required)* - Your OpenAI API key for accessing Sora 2 API
-- **`APP_PASSWORD`** *(required during setup)* - Password protection for your deployment. Prevents unauthorized users from accessing your app and consuming your API credits. Can be removed later in Vercel Project Settings if you want to make the deployment public.
-- **`NEXT_PUBLIC_FILE_STORAGE_MODE`** *(optional, auto-detected)* - Automatically set to `indexeddb` when running on Vercel. Videos are stored in your browser instead of the server. No need to configure this manually.
+- `NEXT_PUBLIC_ENABLE_FRONTEND_MODE` – set this to `true` during setup. No server-side API key is needed; users paste their own key in the browser.
+- (Optional) you can also set `NEXT_PUBLIC_FILE_STORAGE_MODE=indexeddb`, but the app forces IndexedDB automatically when frontend mode is enabled.
 
 ### 🔐 Advanced: Protected Preview Deployments
 
@@ -207,6 +278,7 @@ If you want your deployment protected by Vercel team authentication instead of b
 ### Post-Deployment:
 
 - Videos are automatically stored in your browser's IndexedDB (no server storage)
+- Frontend mode prompts each visitor for their OpenAI API key; backend mode uses the server key you set during deployment
 - You can add, modify, or remove environment variables anytime in Vercel Project Settings
 - You can add a custom domain in Vercel Project Settings → Domains
 

@@ -1,12 +1,13 @@
 'use client';
 
+import type { VideoModel, VideoSize } from 'openai/resources/videos';
 import { ModeToggle } from '@/components/mode-toggle';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Lock, LockOpen, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles } from 'lucide-react';
 import * as React from 'react';
 
 export type RemixFormData = {
@@ -19,9 +20,6 @@ type RemixFormProps = {
     isLoading: boolean;
     currentMode: 'create' | 'remix';
     onModeChange: (mode: 'create' | 'remix') => void;
-    isPasswordRequiredByBackend: boolean | null;
-    clientPasswordHash: string | null;
-    onOpenPasswordDialog: () => void;
     sourceVideoId: string;
     setSourceVideoId: React.Dispatch<React.SetStateAction<string>>;
     remixPrompt: string;
@@ -29,8 +27,8 @@ type RemixFormProps = {
     completedVideos: Array<{
         id: string;
         prompt: string;
-        model: string;
-        size: string;
+        model: VideoModel;
+        size: VideoSize;
         seconds: number;
     }>;
     getVideoSrc: (id: string) => string | undefined;
@@ -41,9 +39,6 @@ export function RemixForm({
     isLoading,
     currentMode,
     onModeChange,
-    isPasswordRequiredByBackend,
-    clientPasswordHash,
-    onOpenPasswordDialog,
     sourceVideoId,
     setSourceVideoId,
     remixPrompt,
@@ -73,16 +68,6 @@ export function RemixForm({
                 <div>
                     <div className='flex items-center'>
                         <CardTitle className='py-1 text-lg font-medium text-white'>Remix Video</CardTitle>
-                        {isPasswordRequiredByBackend && (
-                            <Button
-                                variant='ghost'
-                                size='icon'
-                                onClick={onOpenPasswordDialog}
-                                className='ml-2 text-white/60 hover:text-white'
-                                aria-label='Configure Password'>
-                                {clientPasswordHash ? <Lock className='h-4 w-4' /> : <LockOpen className='h-4 w-4' />}
-                            </Button>
-                        )}
                     </div>
                     <CardDescription className='mt-1 text-white/60'>
                         Make targeted changes to an existing video.
@@ -91,7 +76,7 @@ export function RemixForm({
                 <ModeToggle currentMode={currentMode} onModeChange={onModeChange} />
             </CardHeader>
             <form onSubmit={handleSubmit} className='flex h-full flex-1 flex-col overflow-hidden'>
-                <CardContent className='flex-1 space-y-5 overflow-y-auto p-4'>
+                <CardContent className='flex-1 space-y-5 overflow-y-auto p-4 lg:overflow-visible'>
                     <div className='space-y-2'>
                         <Label htmlFor='source-video-select' className='text-white'>
                             Source Video
@@ -167,7 +152,7 @@ export function RemixForm({
                             onChange={(e) => setRemixPrompt(e.target.value)}
                             required
                             disabled={isLoading || !sourceVideoId}
-                            className='min-h-[100px] rounded-md border border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
+                            className='min-h-[100px] resize-none rounded-md border border-white/20 bg-black text-white placeholder:text-white/40 focus:border-white/50 focus:ring-white/50'
                         />
                         <p className='text-xs text-white/40'>
                             Describe a single, well-defined change. Smaller edits preserve more of the original fidelity.
