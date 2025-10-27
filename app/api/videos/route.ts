@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // app/api/videos/route.ts
 export const runtime = "nodejs";
 
